@@ -18,7 +18,7 @@ ID_COLUMN = "index"
 RAW_TEXT_COLUMN = "ingredients"
 CLEAN_TERM_COLUMN = "cleaned terms"
 
-FUZZY_THRESHOLD = 87
+FUZZY_THRESHOLD = 88
 
 
 # ---------------------------------------------------------
@@ -57,22 +57,25 @@ def smart_split(text):
         sep = match.group()
         i = match.start()
 
-        # Check conditions for '.'
+        # Skip period if it’s part of a single letter, "no.", or decimal
         if sep == '.':
-            prev = text[max(0, i-3):i]  # up to 3 chars before
-            # Don't split if preceded by no, single letter, or digit (for decimals)
-            if re.match(r'(?:\bno\b|[a-zA-Z]|\d)$', prev, flags=re.IGNORECASE):
+            prev_word = re.findall(r'\b\w+\b', text[:i])[-1] if i > 0 else ''
+            next_char = text[i+1] if i < len(text)-1 else ''
+            
+            if prev_word.isalpha() and len(prev_word) == 1:  # single letter like l.
                 continue
-            if i < len(text)-1 and text[i+1].isdigit():  # decimal number
+            if text[max(0, i-2):i].lower() == "no":  # "no."
+                continue
+            if next_char.isdigit():  # decimal number
                 continue
 
-        # Append token
+        # Split here
         token = text[start:i].strip()
         if token:
             tokens.append(token)
         start = i + 1
 
-    # Add remaining text
+    # Add the last piece
     last = text[start:].strip()
     if last:
         tokens.append(last)
@@ -243,16 +246,17 @@ def to_singular(phrase):
     words = phrase.strip().lower().split()
     new_words = []
 
-    singularize_all = "and" in words or "&" in words or "with" in words
+    # singularize_all = "and" in words or "&" in words or "with" in words
+    singularize_all = True
 
     for i, w in enumerate(words):
         # Skip conditions
         if (
             "." in w                     # abbreviations like s. thermophilus
             or len(w) <= 3               # too short
-            or re.search(r'\d', w)       # contains numbers
-            or re.search(r'[%()]', w)    # contains special chars
-            or w.endswith(("us", "philus", "icus", "osis", "ides", "less", "ness", "sses", "ss"))
+            # or re.search(r'\d', w)       # contains numbers
+            # or re.search(r'[%()]', w)    # contains special chars
+            or w.endswith(("us", "philus", "icus", "osis", "ides", "less", "ness", "sses", "ss", "'s"))
         ):
             new_words.append(w)
             continue
@@ -296,7 +300,7 @@ def fuzzy_correct(ingr, clean_terms, threshold=FUZZY_THRESHOLD, is_stripped = Fa
             adj_threshold = 85
 
     if is_stripped:
-        adj_threshold = 88
+        adj_threshold = 92
 
     match, score, _ = process.extractOne(
         ingr_clean,
@@ -315,15 +319,15 @@ def fuzzy_correct(ingr, clean_terms, threshold=FUZZY_THRESHOLD, is_stripped = Fa
 
 
 def reject_fuzzy(orig, corrected, score, fuzzy_threshold=FUZZY_THRESHOLD,
-                 upper_check_score=91, word_sim_threshold=75):
+                 upper_check_score=94, word_sim_threshold=75):
     """
-    Reject multiword ingredients (≥3 words) whose score is <91
+    Reject multiword ingredients (≥3 words) whose score is <94
     and the corrected version differs too much at the word level.
     Returns true if rejected.
     """
 
-    orig_s = (orig or "").strip().lower() # original string
-    corr_s = (corrected or "").strip().lower() # fuzzy corrected string
+    orig_s = (orig or "").strip().lower()       # original string
+    corr_s = (corrected or "").strip().lower()  # fuzzy corrected string
 
     # --- Split into words ---
     orig_words = [w for w in re.split(r'\s+', orig_s) if w]
@@ -438,7 +442,7 @@ def correct_ingredient_list(ingr_list, clean_terms):
                 corrected_ingr,
                 best_score,
                 fuzzy_threshold=FUZZY_THRESHOLD,
-                upper_check_score=91,
+                upper_check_score=94,
                 word_sim_threshold=75
             ):
                 rejected = True
@@ -459,7 +463,7 @@ def correct_ingredient_list(ingr_list, clean_terms):
                 change_log.append(
                     f"- {ingr_for_match} → {rejected_candidate} (REJECTED) ({best_score:.0f}%)"
                 )
-            elif corrected_ingr_final != ingr_for_match:
+            elif final_ingr != ingr_for_match:
                 change_log.append(
                     f"- {ingr_for_match} → {corrected_ingr_final} ({best_score:.0f}%)"
                 )
@@ -568,5 +572,5 @@ def main(start_row=None, end_row=None):
     save_results(cleaned_df, OUTPUT_CSV, OUTPUT_XLSX)
 
 if __name__ == "__main__":
-    main(start_row=6000, end_row=6500)
+    main(start_row=0, end_row=500)
 

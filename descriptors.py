@@ -65,11 +65,14 @@ prefixes = [
     "grade a",
     "of ",
     "partially ",
-    "hydrogenated "
+    "hydrogenated ",
+    "artificial ",
+    "flavor "
 ]
 
 suffixes = [
     " puree",
+    " pepper",
     " paste",
     " powder",
     " extract",
@@ -87,5 +90,5 @@ suffixes = [
     " with micro pulp",
     " base",
     " blend",
-    " from concentrate",
+    " from concentrate"
 ]
