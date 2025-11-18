@@ -12,7 +12,7 @@ prefixes = [
     "unpeeled ",
     "peeled",
     "powdered ",
-    "ground",
+    "ground ",
     "caramelized ",
     "caramelised ",
     "condensed ",
@@ -63,7 +63,9 @@ prefixes = [
     "and ",
     "& ",
     "grade a",
-    "of "
+    "of ",
+    "partially ",
+    "hydrogenated "
 ]
 
 suffixes = [
@@ -73,7 +75,6 @@ suffixes = [
     " extract",
     " concentrate",
     " essence",
-    " syrup",
     " flakes",
     " granules",
     " crumbs",

@@ -45,7 +45,7 @@ def load_data(raw_path, clean_path, nrows=None):
 
 def tokenize_ingredients(text):
     """
-    Split ingredient list into clean tokens.
+    Split ingredient list into clean tokens, preserving commas inside parentheses.
     """
     if pd.isna(text):
         return []
@@ -62,33 +62,34 @@ def tokenize_ingredients(text):
     text = text.replace('[','(').replace('{', '(')
     text = text.replace(']', ')').replace('}', ')')
 
-    # Split ingredients
-    # Split on commas/semicolon/colon not inside parentheses
-    # Split on periods only if NOT between numbers
-    tokens = re.split(
-        r"[,;:](?![^\(]*\))"                
-        r"|(?<!\d)(?<!\b[a-z])(?<!\bno)\.(?!\d)(?=\s|$)",  
-        text
-    )
+    # Depth-aware split
+    tokens = []
+    current = []
+    depth = 0
+    for c in text:
+        if c == '(':
+            depth += 1
+            current.append(c)
+        elif c == ')':
+            depth -= 1
+            current.append(c)
+        elif c in ',;:' and depth == 0:
+            tokens.append("".join(current).strip())
+            current = []
+        else:
+            current.append(c)
+    if current:
+        tokens.append("".join(current).strip())
 
     # Clean up tokens
-    tokens = [t.strip() for t in tokens if t.strip()]
-
-    remove_words = [
-        "contains",
-        "ingredients",
-        "filling"
-    ]
-
+    remove_words = ["contains", "ingredients", "filling"]
     cleaned_tokens = []
     for token in tokens:
         for word in remove_words:
             pattern = rf"^\b{word}\b\s*"
             token = re.sub(pattern, "", token, flags=re.IGNORECASE)
-
             if token.strip().lower() == word:
                 token = ""
-
         if token.strip():
             cleaned_tokens.append(token.strip())
 
@@ -175,6 +176,15 @@ def strip_descriptors(ingredient):
             break  
 
     return ingredient, prefix, suffix
+
+
+def dedupe_repeated_words(phrase):
+    words = phrase.strip().split()
+    if len(words) < 2:
+        return phrase
+    if words[-1] == words[-2]:
+        return " ".join(words[:-1])
+    return phrase
 
 
 # ---------------------------------------------------------
@@ -307,8 +317,8 @@ def reject_fuzzy(orig, corrected, score, fuzzy_threshold=FUZZY_THRESHOLD,
         return False
 
     # --- If lengths are not identical, skip ---
-    if not len(corr_words) == len(orig_words):
-        return False
+    # if not len(corr_words) == len(orig_words):
+    #     return False
 
     # --- Allow subset matches (corrected ⊆ original) ---
     orig_set = set(orig_words)
@@ -435,6 +445,7 @@ def correct_ingredient_list(ingr_list, clean_terms):
             rejected_candidate = None
 
         final_ingr = f"{use_prefix}{corrected_ingr_final}{use_suffix} {paren_part}".strip()
+        final_ingr = dedupe_repeated_words(final_ingr)
 
         # --- Log accepted and rejected corrections ---
         if final_ingr != raw_ingr:
@@ -490,7 +501,6 @@ def correct_parenthetical(text, clean_terms, change_log):
 # ---------------------------------------------------------
 # MAIN PIPELINE
 # ---------------------------------------------------------
-
 def main_pipeline(raw_df, clean_terms):
     """
     Apply correction to all ingredient lists.
@@ -539,7 +549,6 @@ def save_results(df, csv_path, xlsx_path):
 # ---------------------------------------------------------
 # MAIN EXECUTION
 # ---------------------------------------------------------
-
 def main(start_row=None, end_row=None):
     raw_df, clean_df = load_data(RAW_FILE, CLEAN_TERMS)
     
