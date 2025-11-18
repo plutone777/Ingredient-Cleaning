@@ -45,8 +45,12 @@ def load_data(raw_path, clean_path, nrows=None):
 
 def tokenize_ingredients(text):
     """
-    Split ingredient list into clean tokens, preserving commas inside parentheses.
+    Normalize and tokenize ingredient lists.
+    - Add commas around parentheses
+    - Split ingredients by commas
+    - Remove certain leading keywords
     """
+
     if pd.isna(text):
         return []
 
@@ -56,34 +60,23 @@ def tokenize_ingredients(text):
     text = re.sub(r'[\*\+\#]+', '', text)
 
     # Fix cases like "s, thermophilus" → "s. thermophilus"
-    text = re.sub(r'\b([a-z])\s*,\s*([a-z])', r'\1. \2', text)
+    # text = re.sub(r'\b([a-z])\s*,\s*([a-z])', r'\1. \2', text)
 
     # Replace brackets
     text = text.replace('[','(').replace('{', '(')
     text = text.replace(']', ')').replace('}', ')')
 
-    # Depth-aware split
-    tokens = []
-    current = []
-    depth = 0
-    for c in text:
-        if c == '(':
-            depth += 1
-            current.append(c)
-        elif c == ')':
-            depth -= 1
-            current.append(c)
-        elif c in ',;:' and depth == 0:
-            tokens.append("".join(current).strip())
-            current = []
-        else:
-            current.append(c)
-    if current:
-        tokens.append("".join(current).strip())
+    # Add commas before and after parentheses
+    text = re.sub(r'\(', r',(,', text)
+    text = re.sub(r'\)', r',),', text)
 
-    # Clean up tokens
+    # Split on commas
+    tokens = [t.strip() for t in text.split(',') if t.strip()]
+
+    # Remove words
     remove_words = ["contains", "ingredients", "filling"]
     cleaned_tokens = []
+
     for token in tokens:
         for word in remove_words:
             pattern = rf"^\b{word}\b\s*"
@@ -94,6 +87,22 @@ def tokenize_ingredients(text):
             cleaned_tokens.append(token.strip())
 
     return cleaned_tokens
+
+
+def fix_parentheses_commas(text):
+    if not text:
+        return text
+
+    # Remove comma and spaces before '('
+    text = re.sub(r',\s* \(', ' (', text)
+    # Remove comma and spaces after '('
+    text = re.sub(r'\(\s*,\s*', '(', text)
+    # Remove comma and spaces before ')'
+    text = re.sub(r'\s*,\s*\)', ')', text)
+    # Remove comma and spaces after ')' if not at end of list
+    text = re.sub(r'\)\s*,(?=\S)', '),', text)
+
+    return text
 
 
 def is_balanced(text):
@@ -127,7 +136,7 @@ def prepare_clean_terms(clean_df):
     return terms
 
 
-def separate_parenthetical(text):
+# def separate_parenthetical(text):
     """
     Separate the main term and any parenthetical note.
 
@@ -227,30 +236,6 @@ def to_singular(phrase):
             new_words.append(w)
 
     return " ".join(new_words)
-
-
-# def detect_plural(word):
-#     """
-#     Detect simple English plurals and return (is_plural, singular_form).
-#     Handles regular plurals like 'onions' -> 'onion', 'berries' -> 'berry'.
-#     """
-#     word = word.strip().lower()
-#     if len(word) <= 3:
-#         return False, word  # skip short tokens
-
-#     # Regular plural patterns
-#     if word.endswith("ies") and len(word) > 4:
-#         return True, word[:-3] + "y"    
-#     elif word.endswith("oes"):
-#         return True, word[:-2]           
-#     elif word.endswith(("ses", "sses")):
-#         return False, word              
-#     elif word.endswith("es"):
-#         return True, word[:-1]          
-#     elif word.endswith("s") and not word.endswith(("ss", "us")):
-#         return True, word[:-1]         
-#     else:
-#         return False, word
 
 
 # ---------------------------------------------------------
@@ -368,25 +353,19 @@ def correct_ingredient_list(ingr_list, clean_terms):
     for i, ingr in enumerate(ingr_list, start=1):
         raw_ingr = ingr.strip()
 
-        # Separate parentheses
-        main_part, paren_part = separate_parenthetical(raw_ingr)
+        # # Separate parentheses
+        # main_part, paren_part = separate_parenthetical(raw_ingr)
 
-        # Correct parentheses separately
-        if paren_part:
-            inner_text = paren_part[1:-1].strip()
-            if inner_text:
-                paren_part = f"({correct_parenthetical(inner_text, clean_terms, change_log)})"
+        # # Correct parentheses separately
+        # if paren_part:
+        #     inner_text = paren_part[1:-1].strip()
+        #     if inner_text:
+        #         paren_part = f"({correct_parenthetical(inner_text, clean_terms, change_log)})"
 
-        ingr_for_match = main_part.lower().strip()
+        ingr_for_match = raw_ingr.lower().strip()
         if not ingr_for_match:
             corrected_list.append(raw_ingr)
             continue
-
-        # --- Step 1: plural normalization ---
-        # is_plural, singular_form = detect_plural(ingr_for_match)
-        # if is_plural and singular_form != ingr_for_match:
-        #     change_log.append(f"{i}. {raw_ingr} → {singular_form} (plural normalized)")
-        #     ingr_for_match = singular_form
 
         # --- Step 1: plural normalization ---
         singular_form = to_singular(ingr_for_match)
@@ -411,11 +390,6 @@ def correct_ingredient_list(ingr_list, clean_terms):
         # b) Match the original version
         corrected_full, score_full = fuzzy_correct(ingr_for_match, clean_terms, is_stripped=is_stripped)
         match_candidates.append((corrected_full, score_full, "", suffix))
-
-        # change_log.append(
-        #     f"[DEBUG] stripped='{stripped_ingr_for_match}' → '{corrected_stripped}' ({score_stripped:.0f}%), "
-        #     f"full='{ingr_for_match}' → '{corrected_full}' ({score_full:.0f}%)"
-        # )
 
         # Pick the one with the best score
         best_match = max(match_candidates, key=lambda x: x[1])
@@ -444,18 +418,18 @@ def correct_ingredient_list(ingr_list, clean_terms):
         else:
             rejected_candidate = None
 
-        final_ingr = f"{use_prefix}{corrected_ingr_final}{use_suffix} {paren_part}".strip()
+        final_ingr = f"{use_prefix}{corrected_ingr_final}{use_suffix}".strip()
         final_ingr = dedupe_repeated_words(final_ingr)
 
         # --- Log accepted and rejected corrections ---
         if final_ingr != raw_ingr:
             if rejected:
                 change_log.append(
-                    f"- {ingr_for_match} {paren_part} → {rejected_candidate} {paren_part} (REJECTED) ({best_score:.0f}%)"
+                    f"- {ingr_for_match} → {rejected_candidate} (REJECTED) ({best_score:.0f}%)"
                 )
             elif corrected_ingr_final != ingr_for_match:
                 change_log.append(
-                    f"- {ingr_for_match} {paren_part} → {corrected_ingr_final} {paren_part} ({best_score:.0f}%)"
+                    f"- {ingr_for_match} → {corrected_ingr_final} ({best_score:.0f}%)"
                 )
 
         # --- Step 4: avoid redundant entries ---
@@ -467,7 +441,7 @@ def correct_ingredient_list(ingr_list, clean_terms):
     return corrected_list, change_log
 
 
-def correct_parenthetical(text, clean_terms, change_log):
+# def correct_parenthetical(text, clean_terms, change_log):
     """
     Recursively correct ingredients inside parentheses.
     text: string without outer parentheses
@@ -526,6 +500,7 @@ def main_pipeline(raw_df, clean_terms):
 
     raw_df["corrected ingr"] = corrected_lists
     raw_df["output"] = raw_df["corrected ingr"].apply(lambda lst: ", ".join(lst))
+    raw_df["output"] = raw_df["output"].apply(fix_parentheses_commas)
 
     filtered_logs = []
     for log in change_logs:
