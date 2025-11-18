@@ -43,14 +43,50 @@ def load_data(raw_path, clean_path, nrows=None):
     return raw_df, clean_df
 
 
+def smart_split(text):
+    """
+    Split text on ',' or '.' except when '.' is part of:
+        - single letters (s., l., etc.)
+        - 'no.'
+        - decimal numbers (3.14)
+    """
+    tokens = []
+    start = 0
+
+    for match in re.finditer(r'[.,]', text):
+        sep = match.group()
+        i = match.start()
+
+        # Check conditions for '.'
+        if sep == '.':
+            prev = text[max(0, i-3):i]  # up to 3 chars before
+            # Don't split if preceded by no, single letter, or digit (for decimals)
+            if re.match(r'(?:\bno\b|[a-zA-Z]|\d)$', prev, flags=re.IGNORECASE):
+                continue
+            if i < len(text)-1 and text[i+1].isdigit():  # decimal number
+                continue
+
+        # Append token
+        token = text[start:i].strip()
+        if token:
+            tokens.append(token)
+        start = i + 1
+
+    # Add remaining text
+    last = text[start:].strip()
+    if last:
+        tokens.append(last)
+
+    return tokens
+
+
 def tokenize_ingredients(text):
     """
     Normalize and tokenize ingredient lists.
-    - Add commas around parentheses
-    - Split ingredients by commas
+    - Add commas around parentheses for internal consistency
+    - Split ingredients
     - Remove certain leading keywords
     """
-
     if pd.isna(text):
         return []
 
@@ -59,10 +95,7 @@ def tokenize_ingredients(text):
     # Remove symbols
     text = re.sub(r'[\*\+\#]+', '', text)
 
-    # Fix cases like "s, thermophilus" → "s. thermophilus"
-    # text = re.sub(r'\b([a-z])\s*,\s*([a-z])', r'\1. \2', text)
-
-    # Replace brackets
+    # Replace brackets with parentheses
     text = text.replace('[','(').replace('{', '(')
     text = text.replace(']', ')').replace('}', ')')
 
@@ -70,13 +103,12 @@ def tokenize_ingredients(text):
     text = re.sub(r'\(', r',(,', text)
     text = re.sub(r'\)', r',),', text)
 
-    # Split on commas
-    tokens = [t.strip() for t in text.split(',') if t.strip()]
+    # Split safely
+    tokens = smart_split(text)
 
-    # Remove words
-    remove_words = ["contains", "ingredients", "filling"]
+    # Remove unwanted leading words
+    remove_words = ["contains:", "ingredients:", "filling:"]
     cleaned_tokens = []
-
     for token in tokens:
         for word in remove_words:
             pattern = rf"^\b{word}\b\s*"
@@ -93,8 +125,8 @@ def fix_parentheses_commas(text):
     if not text:
         return text
 
-    # Remove comma and spaces before '('
-    text = re.sub(r',\s* \(', ' (', text)
+    # Remove comma before '(' and add a space, unless '(' is immediately preceded by another '('
+    text = re.sub(r'(?<!\()\s*,\s*\(', ' (', text)
     # Remove comma and spaces after '('
     text = re.sub(r'\(\s*,\s*', '(', text)
     # Remove comma and spaces before ')'
