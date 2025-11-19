@@ -9,10 +9,10 @@ from descriptors import *
 # CONFIGURATION
 # ---------------------------------------------------------
 RAW_FILE = "Raws.csv"
-CLEAN_TERMS = "12u12 Cleaned Terms.xlsx"
+CLEAN_TERMS = r"C:\Users\chooi\Downloads\Ingredient Cleaning\cleaner_files\12u12 Cleaned Terms.xlsx"
 
-OUTPUT_CSV = "cleaned_ingredients.csv"
-OUTPUT_XLSX = "cleaned_ingredients.xlsx"
+# OUTPUT_CSV = "cleaned_ingredients1.csv"
+OUTPUT_XLSX = "cleaned_ingredients1.xlsx"
 
 ID_COLUMN = "index"
 RAW_TEXT_COLUMN = "ingredients"
@@ -348,20 +348,21 @@ def reject_fuzzy(orig, corrected, score, fuzzy_threshold=FUZZY_THRESHOLD,
         return False
 
     # --- Only consider borderline fuzzy matches ---
-    if score >= fuzzy_threshold and score <= upper_check_score:
-        max_len = max(len(orig_words), len(corr_words))
-        for i in range(max_len):
-            ow = orig_words[i] if i < len(orig_words) else ""
-            cw = corr_words[i] if i < len(corr_words) else ""
-            if not ow or not cw:
-                continue
+    if len(orig_words) == len(corr_words):
+        if score >= fuzzy_threshold and score <= upper_check_score:
+            max_len = max(len(orig_words), len(corr_words))
+            for i in range(max_len):
+                ow = orig_words[i] if i < len(orig_words) else ""
+                cw = corr_words[i] if i < len(corr_words) else ""
+                if not ow or not cw:
+                    continue
 
-            if ow == cw:
-                continue
+                if ow == cw:
+                    continue
 
-            wscore = fuzz.ratio(ow, cw)
-            if wscore < word_sim_threshold:
-                return True  # reject
+                wscore = fuzz.ratio(ow, cw)
+                if wscore < word_sim_threshold:
+                    return True  # reject
 
     return False
 
@@ -549,12 +550,12 @@ def main_pipeline(raw_df, clean_terms):
     return raw_df
 
 
-def save_results(df, csv_path, xlsx_path):
+def save_results(df, xlsx_path):
     """Save the cleaned dataset to both CSV and Excel."""
     cols_to_save = [ID_COLUMN, RAW_TEXT_COLUMN, "output", "changelog"]
-    df[cols_to_save].to_csv(csv_path, index=False)
+    # df[cols_to_save].to_csv(csv_path, index=False)
     df[cols_to_save].to_excel(xlsx_path, index=False)
-    print(f"Results saved to:\n- CSV: {csv_path}\n- Excel: {xlsx_path}")
+    print(f"Results saved to:\n- Excel: {xlsx_path}")
 
 
 # ---------------------------------------------------------
@@ -569,7 +570,7 @@ def main(start_row=None, end_row=None):
 
     clean_terms = prepare_clean_terms(clean_df)
     cleaned_df = main_pipeline(raw_df, clean_terms)
-    save_results(cleaned_df, OUTPUT_CSV, OUTPUT_XLSX)
+    save_results(cleaned_df, OUTPUT_XLSX)
 
 if __name__ == "__main__":
     main(start_row=0, end_row=500)
